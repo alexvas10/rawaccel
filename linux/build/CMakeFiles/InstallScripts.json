@@ -1,0 +1,10 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/alex/Documents/Code/rawaccel/linux/build/cmake_install.cmake",
+		"/home/alex/Documents/Code/rawaccel/linux/build/_deps/nlohmann_json-build/cmake_install.cmake",
+		"/home/alex/Documents/Code/rawaccel/linux/build/daemon/cmake_install.cmake",
+		"/home/alex/Documents/Code/rawaccel/linux/build/gui/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

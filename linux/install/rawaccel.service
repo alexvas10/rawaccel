@@ -1,0 +1,17 @@
+[Unit]
+Description=rawaccel mouse acceleration daemon
+Documentation=https://github.com/a1xd/rawaccel
+DefaultDependencies=no
+After=systemd-udevd.service local-fs.target
+Before=display-manager.service sysinit.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rawacceld
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=sysinit.target
