@@ -11,6 +11,7 @@
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <sys/eventfd.h>
 
 struct libevdev;
 
@@ -59,6 +60,7 @@ private:
 
     std::thread thread_;
     std::atomic<bool> running_{false};
+    int wakeup_fd_ = -1;
 
     void run_loop();
     void process_event(int raw_x, int raw_y, double delta_ms);

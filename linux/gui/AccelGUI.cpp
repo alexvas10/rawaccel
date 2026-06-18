@@ -1,5 +1,6 @@
 #include "AccelGUI.hpp"
 #include <QMetaObject>
+#include <QTimer>
 
 AccelGUI::AccelGUI(QObject* parent) : QObject(parent) {
     ipc_client_ = new IpcClient(this);
@@ -69,8 +70,11 @@ void AccelGUI::onApply() {
     auto err = ipc_client_->writeSettings(j);
     if (err.empty()) {
         setStatus("Settings applied");
-        // Save user cache
         try { SettingsManager::saveJson(SettingsManager::userCachePath(), j); } catch (...) {}
+        QTimer::singleShot(2000, this, [this]{
+            if (ipc_client_->isConnected())
+                setStatus("Connected to daemon");
+        });
     } else {
         setStatus("Error: " + QString::fromStdString(err), true);
     }

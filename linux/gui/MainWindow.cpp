@@ -73,7 +73,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(whole_check_, &QCheckBox::toggled, this, &MainWindow::onWholeChanged);
     connect(panel_x_, &AccelTypePanel::changed, accel_gui_, &AccelGUI::onParamChanged);
     connect(panel_y_, &AccelTypePanel::changed, accel_gui_, &AccelGUI::onParamChanged);
-    connect(dpi_spin_, QOverload<int>::of(&QSpinBox::valueChanged), accel_gui_, &AccelGUI::onParamChanged);
+    connect(dpi_spin_,  QOverload<int>::of(&QSpinBox::valueChanged), accel_gui_, &AccelGUI::onParamChanged);
+    connect(poll_spin_, QOverload<int>::of(&QSpinBox::valueChanged), accel_gui_, &AccelGUI::onParamChanged);
 
     connect(apply_btn_, &QPushButton::clicked, this, &MainWindow::onApplyClicked);
     connect(reset_btn_, &QPushButton::clicked, this, &MainWindow::onResetClicked);

@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/rawacceld.dir/link.d CMakeFiles/rawacceld.dir/main.cpp.o CMakeFiles/rawacceld.dir/SettingsLoader.cpp.o CMakeFiles/rawacceld.dir/VirtualMouse.cpp.o CMakeFiles/rawacceld.dir/MouseDevice.cpp.o CMakeFiles/rawacceld.dir/DeviceManager.cpp.o CMakeFiles/rawacceld.dir/IpcServer.cpp.o -o rawacceld  -levdev -lpthread

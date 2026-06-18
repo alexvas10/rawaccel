@@ -12,6 +12,8 @@ Restart=always
 RestartSec=2
 StandardOutput=journal
 StandardError=journal
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=10
 
 [Install]
 WantedBy=sysinit.target

@@ -361,3 +361,10 @@ signed/**
 !signed/*/driver/
 !signed/*/driver/rawaccel.sys
 signed/RawAccel/
+
+# Linux build artifacts and internal notes
+linux/build/
+linux/handoff.md
+
+# Release tarballs
+rawaccel-linux-x64.tar.gz

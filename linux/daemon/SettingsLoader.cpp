@@ -186,7 +186,7 @@ LoadedSettings settings_from_json(const std::string& json_str,
     LoadedSettings out{};
     nlohmann::json root = nlohmann::json::parse(json_str);
 
-    out.version = root.value("version", "1.7.0");
+    out.version = root.value("version", "1.7.1");
 
     // Handle both flat (Linux native) and legacy "Driver settings" wrapper
     const nlohmann::json* cfg = &root;
@@ -318,7 +318,7 @@ std::string settings_to_json(const LoadedSettings& s) {
     nlohmann::json root;
     root["### Accel modes ###"] = "classic | jump | natural | synchronous | power | lut | noaccel";
     root["### Cap modes ###"]   = "in_out | input | output";
-    root["version"]             = s.version.empty() ? "1.7.0" : s.version;
+    root["version"]             = s.version.empty() ? "1.7.1" : s.version;
     root["defaultDeviceConfig"] = device_config_to_json(s.default_device_cfg);
     root["profiles"]            = nlohmann::json::array({profile});
     root["devices"]             = devices;
@@ -331,7 +331,7 @@ LoadedSettings load_settings_file(const std::string& path) {
     if (!f) {
         // Return defaults
         LoadedSettings s{};
-        s.version = "1.7.0";
+        s.version = "1.7.1";
         rawaccel::init_data(s.modifier);
         return s;
     }

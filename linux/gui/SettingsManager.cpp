@@ -152,7 +152,7 @@ nlohmann::json profileToJson(const rawaccel::modifier_settings& settings) {
     nlohmann::json root;
     root["### Accel modes ###"] = "classic | jump | natural | synchronous | power | lut | noaccel";
     root["### Cap modes ###"]   = "in_out | input | output";
-    root["version"]             = "1.7.0";
+    root["version"]             = "1.7.1";
     root["defaultDeviceConfig"] = {{"disable",false},{"setExtraInfo",false},{"dpi",0},{"pollingRate",0}};
     root["profiles"]            = nlohmann::json::array({jp});
     root["devices"]             = nlohmann::json::array();

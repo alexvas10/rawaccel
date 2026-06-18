@@ -1,6 +1,7 @@
 #include "IpcServer.hpp"
 #include "ipc_protocol.hpp"
 
+#include <cerrno>
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
@@ -63,15 +64,26 @@ void IpcServer::broadcast_event(double x, double y, double time_ms) {
     msg["y"]    = y;
     msg["time_ms"] = time_ms;
 
+    std::string body = msg.dump();
+    uint32_t len = static_cast<uint32_t>(body.size());
+    uint8_t hdr[4] = {
+        static_cast<uint8_t>(len & 0xFF),
+        static_cast<uint8_t>((len >> 8) & 0xFF),
+        static_cast<uint8_t>((len >> 16) & 0xFF),
+        static_cast<uint8_t>((len >> 24) & 0xFF),
+    };
+
     std::vector<int> dead;
     {
         std::lock_guard lock(subscribers_mutex_);
         for (int fd : subscriber_fds_) {
-            try {
-                rawaccel_ipc::ipc_send(fd, msg);
-            } catch (...) {
-                dead.push_back(fd);
-            }
+            // Non-blocking: if the GUI's receive buffer is full, drop this event
+            // rather than stalling the daemon's per-device thread.
+            ssize_t r = send(fd, hdr, 4, MSG_NOSIGNAL | MSG_DONTWAIT);
+            if (r == 4)
+                send(fd, body.data(), body.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+            else if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+                dead.push_back(fd); // real error (EPIPE, ECONNRESET) — subscriber gone
         }
         for (int fd : dead) {
             close(fd);

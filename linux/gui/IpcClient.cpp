@@ -1,5 +1,9 @@
 #include "IpcClient.hpp"
-#include <QDataStream>
+
+#include <cstring>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 IpcClient::IpcClient(QObject* parent) : QObject(parent) {
     reconnect_timer_ = new QTimer(this);
@@ -20,40 +24,65 @@ bool IpcClient::isConnected() const {
 }
 
 bool IpcClient::do_request(const nlohmann::json& req, nlohmann::json& resp) {
-    QLocalSocket sock;
-    sock.connectToServer(SOCKET_PATH);
-    if (!sock.waitForConnected(2000)) return false;
+    // Use a plain POSIX socket instead of QLocalSocket.
+    // Qt's waitForConnected/waitForReadyRead internally call processEvents(),
+    // which allows the reconnect timer and sub_socket_ disconnect signals to
+    // fire reentrant mid-request — corrupting the status display. POSIX calls
+    // block the thread directly without touching the Qt event loop.
+    int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return false;
 
+    struct sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+
+    if (::connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        ::close(fd); return false;
+    }
+
+    // Send length-prefixed JSON request
     std::string body = req.dump();
     uint32_t len = static_cast<uint32_t>(body.size());
     uint8_t hdr[4] = {
-        uint8_t(len & 0xFF), uint8_t((len>>8)&0xFF),
-        uint8_t((len>>16)&0xFF), uint8_t((len>>24)&0xFF)
+        uint8_t(len & 0xFF), uint8_t((len >> 8) & 0xFF),
+        uint8_t((len >> 16) & 0xFF), uint8_t((len >> 24) & 0xFF)
     };
-    sock.write(reinterpret_cast<const char*>(hdr), 4);
-    sock.write(body.data(), body.size());
-    sock.flush();
+    auto send_all = [fd](const void* buf, size_t n) -> bool {
+        const char* p = static_cast<const char*>(buf);
+        while (n > 0) {
+            ssize_t r = ::send(fd, p, n, MSG_NOSIGNAL);
+            if (r <= 0) return false;
+            p += r; n -= static_cast<size_t>(r);
+        }
+        return true;
+    };
+    if (!send_all(hdr, 4) || !send_all(body.data(), body.size())) {
+        ::close(fd); return false;
+    }
 
-    // Read response header
-    if (!sock.waitForReadyRead(3000)) return false;
-    QByteArray rsp_data;
-    while (rsp_data.size() < 4 && sock.waitForReadyRead(1000))
-        rsp_data += sock.readAll();
-    if (rsp_data.size() < 4) return false;
-
-    uint32_t rlen = static_cast<uint8_t>(rsp_data[0])
-                  | (static_cast<uint8_t>(rsp_data[1]) << 8)
-                  | (static_cast<uint8_t>(rsp_data[2]) << 16)
-                  | (static_cast<uint8_t>(rsp_data[3]) << 24);
-
-    QByteArray body_data = rsp_data.mid(4);
-    while (static_cast<uint32_t>(body_data.size()) < rlen && sock.waitForReadyRead(1000))
-        body_data += sock.readAll();
+    // Read length-prefixed JSON response
+    auto recv_all = [fd](void* buf, size_t n) -> bool {
+        char* p = static_cast<char*>(buf);
+        while (n > 0) {
+            ssize_t r = ::recv(fd, p, n, 0);
+            if (r <= 0) return false;
+            p += r; n -= static_cast<size_t>(r);
+        }
+        return true;
+    };
+    uint8_t rhdr[4];
+    if (!recv_all(rhdr, 4)) { ::close(fd); return false; }
+    uint32_t rlen = uint32_t(rhdr[0]) | (uint32_t(rhdr[1]) << 8)
+                  | (uint32_t(rhdr[2]) << 16) | (uint32_t(rhdr[3]) << 24);
+    std::string rbody(rlen, '\0');
+    if (!recv_all(rbody.data(), rlen)) { ::close(fd); return false; }
 
     try {
-        resp = nlohmann::json::parse(body_data.constData(), body_data.constData() + body_data.size());
+        resp = nlohmann::json::parse(rbody);
+        ::close(fd);
         return true;
     } catch (...) {
+        ::close(fd);
         return false;
     }
 }
@@ -135,4 +164,7 @@ void IpcClient::onSubDataReady() {
 void IpcClient::onSubDisconnected() {
     sub_buf_.clear();
     emit connectionChanged(false);
+    // Reconnect quickly rather than waiting for the next timer tick (up to 5 s).
+    if (subscribed_)
+        QTimer::singleShot(300, this, &IpcClient::tryConnect);
 }
