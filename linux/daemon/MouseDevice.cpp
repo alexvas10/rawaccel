@@ -44,7 +44,9 @@ MouseDevice::MouseDevice(const std::string& path,
 
     // Grab device exclusively so X11/Wayland see only our virtual output
     if (libevdev_grab(dev_, LIBEVDEV_GRAB) < 0) {
-        // Non-fatal — some devices (touchpads acting as mice) may refuse
+        fprintf(stderr, "rawacceld: WARNING: could not grab %s (%s) — "
+                "acceleration will not be applied to this device\n",
+                path.c_str(), libevdev_get_name(dev_));
     }
 
     rawaccel::init_data(settings_);
@@ -137,7 +139,10 @@ void MouseDevice::run_loop() {
                 break; // Buffer exhausted — go back to poll()
             }
 
-            if (rc < 0) goto done; // Device disconnected
+            if (rc < 0) {
+                fprintf(stderr, "rawacceld: device %s disconnected\n", path_.c_str());
+                goto done;
+            }
 
             if (ev.type == EV_REL) {
                 if (ev.code == REL_X) acc_x += ev.value;

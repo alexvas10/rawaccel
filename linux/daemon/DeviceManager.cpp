@@ -1,7 +1,9 @@
 #include "DeviceManager.hpp"
 
+#include <chrono>
 #include <cstring>
 #include <cwchar>
+#include <set>
 #include <stdexcept>
 #include <fcntl.h>
 #include <unistd.h>
@@ -107,13 +109,37 @@ void DeviceManager::remove_device(const std::string& path) {
 
 void DeviceManager::run_hotplug_loop() {
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+    bool pending = false;
+    std::chrono::steady_clock::time_point settle_deadline;
 
     while (running_) {
+        // If there are pending hotplug events, use a short timeout timed to the
+        // settle deadline; otherwise sleep up to 1 s waiting for the next event.
+        struct timeval tv{1, 0};
+        if (pending) {
+            auto now = std::chrono::steady_clock::now();
+            if (now >= settle_deadline) {
+                reenumerate_all();
+                pending = false;
+                continue;
+            }
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          settle_deadline - now).count();
+            tv = {0, static_cast<suseconds_t>(ms * 1000)};
+        }
+
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(inotify_fd_, &fds);
-        struct timeval tv{1, 0};
-        if (select(inotify_fd_ + 1, &fds, nullptr, nullptr, &tv) <= 0) continue;
+        int ready = select(inotify_fd_ + 1, &fds, nullptr, nullptr, &tv);
+
+        if (ready <= 0) {
+            if (pending) {
+                reenumerate_all();
+                pending = false;
+            }
+            continue;
+        }
 
         ssize_t len = read(inotify_fd_, buf, sizeof(buf));
         if (len <= 0) continue;
@@ -123,18 +149,50 @@ void DeviceManager::run_hotplug_loop() {
             if (ev->len > 0) {
                 std::string name(ev->name);
                 if (name.substr(0, 5) == "event") {
-                    std::string full = "/dev/input/" + name;
-                    if (ev->mask & (IN_CREATE | IN_ATTRIB)) {
-                        usleep(100000); // Brief delay for device to settle
-                        add_device(full);
-                    } else if (ev->mask & IN_DELETE) {
-                        remove_device(full);
-                    }
+                    // Extend (or start) the settle window on every relevant event.
+                    // This debounces udev bursts that occur during package updates.
+                    pending = true;
+                    settle_deadline = std::chrono::steady_clock::now()
+                                    + std::chrono::milliseconds(300);
                 }
             }
             p += sizeof(struct inotify_event) + ev->len;
         }
     }
+}
+
+void DeviceManager::reenumerate_all() {
+    // Snapshot what the kernel currently exposes
+    glob_t g{};
+    std::set<std::string> fs_paths;
+    if (glob("/dev/input/event*", GLOB_NOSORT, nullptr, &g) == 0) {
+        for (size_t i = 0; i < g.gl_pathc; ++i)
+            fs_paths.insert(g.gl_pathv[i]);
+    }
+    globfree(&g);
+
+    // Drop tracked devices whose node no longer exists
+    {
+        std::lock_guard lock(devices_mutex_);
+        for (auto it = devices_.begin(); it != devices_.end(); ) {
+            if (!fs_paths.count(it->first))
+                it = devices_.erase(it);
+            else
+                ++it;
+        }
+    }
+
+    // Add any node not yet tracked (covers re-numbered devices and new arrivals)
+    for (const auto& path : fs_paths) {
+        {
+            std::lock_guard lock(devices_mutex_);
+            if (devices_.count(path)) continue;
+        }
+        add_device(path);
+    }
+
+    fprintf(stderr, "rawacceld: hotplug re-enumerate: %d mouse(s) active\n",
+            mouse_count());
 }
 
 rawaccel::device_config DeviceManager::config_for_device(const std::string& dev_name) const {

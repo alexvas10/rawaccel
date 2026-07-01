@@ -4,9 +4,11 @@
 #include "SettingsLoader.hpp"
 #include "VirtualMouse.hpp"
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -44,6 +46,7 @@ private:
     void add_device(const std::string& path);
     void remove_device(const std::string& path);
     void run_hotplug_loop();
+    void reenumerate_all();
 
     rawaccel::device_config config_for_device(const std::string& dev_name) const;
 };
